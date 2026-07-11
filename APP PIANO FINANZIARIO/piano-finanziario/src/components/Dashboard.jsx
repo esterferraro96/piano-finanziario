@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Bar, Line } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
 import { CONTI, MESI, COLORS, euro, fmtDate, nowYM, weekRange } from '../lib/supabase'
@@ -16,7 +16,7 @@ function calcTaxAvg(data) {
   return ((imp * fis.al / 100) + (imp * fis.inps / 100)) / mesi
 }
 
-function WeeklyCard({ data, save, user }) {
+function WeeklyCard({ data, user, netMensile }) {
   const { dal, al } = weekRange()
   const wE = data.entrate.filter(e => e.date >= dal && e.date <= al)
   const wS = data.spese.filter(s => s.date >= dal && s.date <= al)
@@ -28,11 +28,10 @@ function WeeklyCard({ data, save, user }) {
 
   const key = `mpf_wk_${user?.id}_${dal}`
   const [done, setDone] = useState(!!localStorage.getItem(key))
+  const markDone = () => { localStorage.setItem(key, '1'); setDone(true) }
 
-  const markDone = () => {
-    localStorage.setItem(key, '1')
-    setDone(true)
-  }
+  // Se non ci sono entrate questa settimana → mostra riepilogo mensile
+  const noEntrate = wTotE === 0
 
   return (
     <div className="card" style={{ border: '1.5px solid #1d9e75' }}>
@@ -42,51 +41,79 @@ function WeeklyCard({ data, save, user }) {
           <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{fmtDate(dal)} — {fmtDate(al)}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#3b6d11' }}>{euro(wNet)}</div>
-          <div style={{ fontSize: 11, color: 'var(--text2)' }}>da distribuire</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#3b6d11' }}>{euro(noEntrate ? netMensile : wNet)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)' }}>{noEntrate ? 'distribuzione mensile' : 'da distribuire'}</div>
         </div>
       </div>
 
-      <div className="week-breakdown">
-        <div className="week-box">
-          <div className="week-box-label">Entrate</div>
-          <div className="week-box-val" style={{ color: '#3b6d11' }}>{euro(wTotE)}</div>
-        </div>
-        <div className="week-box">
-          <div className="week-box-label">Spese</div>
-          <div className="week-box-val" style={{ color: '#a32d2d' }}>{euro(wTotS)}</div>
-        </div>
-        <div className="week-box">
-          <div className="week-box-label">Tasse est.</div>
-          <div className="week-box-val" style={{ color: '#854f0b' }}>{euro(taxSett)}</div>
-        </div>
-      </div>
-
-      {wNet === 0 ? (
-        <div className="empty" style={{ padding: '12px 0' }}>Nessun importo da distribuire questa settimana.</div>
-      ) : (
-        <div>
-          {CONTI.map(c => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>{c.icon}</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{c.nome}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>{c.pct}%</div>
+      {noEntrate ? (
+        <>
+          <div className="alert alert-info" style={{ marginBottom: 12 }}>
+            📌 Nessuna entrata questa settimana. Ecco la tua distribuzione mensile di <strong>{euro(netMensile)}</strong> — usala come riferimento per gestire il tuo Conto Personale.
+          </div>
+          {netMensile > 0 ? (
+            <div>
+              {CONTI.map(c => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{c.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{c.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)' }}>{c.pct}% del mese</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: c.color }}>{euro(netMensile * c.pct / 100)}</div>
                 </div>
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: c.color }}>{euro(wNet * c.pct / 100)}</div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="empty" style={{ padding: '12px 0' }}>Aggiungi le entrate del mese per vedere la distribuzione.</div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="week-breakdown">
+            <div className="week-box">
+              <div className="week-box-label">Entrate</div>
+              <div className="week-box-val" style={{ color: '#3b6d11' }}>{euro(wTotE)}</div>
+            </div>
+            <div className="week-box">
+              <div className="week-box-label">Spese</div>
+              <div className="week-box-val" style={{ color: '#a32d2d' }}>{euro(wTotS)}</div>
+            </div>
+            <div className="week-box">
+              <div className="week-box-label">Tasse est.</div>
+              <div className="week-box-val" style={{ color: '#854f0b' }}>{euro(taxSett)}</div>
+            </div>
+          </div>
 
-      <div style={{ marginTop: 12 }}>
-        {wNet > 0 && (done
-          ? <div className="alert alert-ok">✅ Hai già distribuito questa settimana! Ottimo lavoro 💪</div>
-          : <button className="btn btn-green" style={{ width: '100%' }} onClick={markDone}>✓ Ho distribuito questa settimana</button>
-        )}
-      </div>
+          {wNet === 0 ? (
+            <div className="empty" style={{ padding: '12px 0' }}>Nessun importo da distribuire questa settimana.</div>
+          ) : (
+            <div>
+              {CONTI.map(c => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{c.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{c.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)' }}>{c.pct}%</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: c.color }}>{euro(wNet * c.pct / 100)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            {wNet > 0 && (done
+              ? <div className="alert alert-ok">✅ Hai già distribuito questa settimana! Ottimo lavoro 💪</div>
+              : <button className="btn btn-green" style={{ width: '100%' }} onClick={markDone}>✓ Ho distribuito questa settimana</button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -102,13 +129,11 @@ export default function Dashboard({ data, save, user, onPDF }) {
   const taxAvg = calcTaxAvg(data)
   const net = Math.max(0, totE - totS - taxAvg)
 
-  // Chart data: spese per categoria
   const catMap = {}
   thisMonthS.forEach(s => { catMap[s.cat] = (catMap[s.cat] || 0) + parseFloat(s.amount || 0) })
   const catLabels = Object.keys(catMap)
   const catVals = Object.values(catMap)
 
-  // Trend ultimi 6 mesi
   const now = new Date()
   const tLabels = [], tE = [], tS = []
   for (let i = 5; i >= 0; i--) {
@@ -166,7 +191,7 @@ export default function Dashboard({ data, save, user, onPDF }) {
           : <div className="alert alert-ok">✅ {euro(net)} da distribuire sulle 6 destinazioni questo mese.</div>
       }
 
-      <WeeklyCard data={data} save={save} user={user} />
+      <WeeklyCard data={data} user={user} netMensile={net} />
 
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
